@@ -1,0 +1,8 @@
+services:
+  bot:
+    build: .
+    command: python main.py
+    environment:
+      TELEGRAM_TOKEN:
+      TELEGRAM_MAIN_CHAT_ID:
+    restart: unless-stopped
