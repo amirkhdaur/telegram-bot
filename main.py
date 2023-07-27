@@ -2,7 +2,7 @@ import telebot
 from telebot import types
 import config
 
-bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
+bot = telebot.TeleBot(config.TELEGRAM_TOKEN, parse_mode='HTML')
 
 bot_info = bot.get_me()
 bot_id = bot_info.id
@@ -15,8 +15,6 @@ document_types = [
     'акт сверки',
     'прочее'
 ]
-
-users = {}
 
 
 @bot.message_handler(commands=['getchatid'])
@@ -36,47 +34,27 @@ def handle_reply_check(message):
 
 @bot.message_handler(content_types=['text', 'document', 'photo'], func=handle_reply_check)
 def handle_reply(message):
-    text = message.text
-    ids = message.reply_to_message.text.split('\n')[0][4:].split('_')
+    if message.reply_to_message.text:
+        message_text = message.reply_to_message.text
+    else:
+        message_text = message.reply_to_message.caption
+
+    ids = message_text.split('\n')[0][4:].split('_')
     chat_id = ids[0]
     message_id = ids[1]
     if message.document:
-        bot.send_document(chat_id, document=message.document.file_id, reply_to_message_id=message_id)
+        bot.send_document(chat_id, document=message.document.file_id, caption=message.caption,
+                          reply_to_message_id=message_id)
     elif message.photo:
-        bot.send_photo(chat_id, photo=message.photo[0].file_id, reply_to_message_id=message_id)
+        bot.send_photo(chat_id, photo=message.photo[0].file_id, caption=message.caption, reply_to_message_id=message_id)
     else:
-        bot.send_message(chat_id, text=text, reply_to_message_id=message_id)
+        bot.send_message(chat_id, text=message.text, reply_to_message_id=message_id)
 
 
 @bot.message_handler(content_types=['text', 'document', 'photo'],
                      func=lambda message: str(message.chat.id) != config.TELEGRAM_MAIN_CHAT_ID)
 def handle_document(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
-
-    if message.document:
-        message_data = message.document.file_id
-        message_type = 'document'
-    elif message.photo:
-        message_data = message.photo[0].file_id
-        message_type = 'photo'
-    else:
-        message_data = message.text
-        message_type = 'text'
-
-    user_id = str(message.from_user.id)
-    if users.get(user_id):
-        users[user_id].append({
-            'message_id': message.id,
-            'message_data': message_data,
-            'message_type': message_type
-        })
-    else:
-        users[user_id] = [{
-            'message_id': message.id,
-            'message_data': message_data,
-            'message_type': message_type
-        }]
-
     buttons = [
         types.InlineKeyboardButton(text, callback_data=str(index))
         for index, text in enumerate(document_types)
@@ -91,26 +69,29 @@ def handle_document(message):
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
     bot.edit_message_text('Отправлено', call.message.chat.id, call.message.id)
-
     document_type = int(call.data)
 
-    user_id = str(call.from_user.id)
-
-    data = users[user_id].pop(0)
-    message_id = data.get('message_id')
-    message_data = data.get('message_data')
-    message_type = data.get('message_type')
-
+    message = call.message.reply_to_message
     user = call.from_user
-    message = f'ID: {call.message.chat.id}_{message_id}\n' + \
-              f'ФИО: {user.first_name} {user.last_name}\n' + \
-              f'Тип Документа: {document_types[document_type]}'
-    if message_type == 'document':
-        bot.send_document(config.TELEGRAM_MAIN_CHAT_ID, document=message_data, caption=message)
-    elif message_type == 'photo':
-        bot.send_photo(config.TELEGRAM_MAIN_CHAT_ID, photo=message_data, caption=message)
+    text = f'ID: {call.message.chat.id}_{message.id}\n' + \
+           f'Имя: {user.first_name} {user.last_name}\n' + \
+           f'Тип Документа: <b>{document_types[document_type]}</b>'
+
+    message_text = None
+    if message.text:
+        message_text = message.text
+    elif message.caption:
+        message_text = message.caption
+
+    if message_text:
+        text += f'\n\n{message_text}'
+
+    if message.document:
+        bot.send_document(config.TELEGRAM_MAIN_CHAT_ID, document=message.document.file_id, caption=text)
+    elif message.photo:
+        bot.send_photo(config.TELEGRAM_MAIN_CHAT_ID, photo=message.photo[0].file_id, caption=text)
     else:
-        bot.send_message(config.TELEGRAM_MAIN_CHAT_ID, text=message + '\n\n' + message_data)
+        bot.send_message(config.TELEGRAM_MAIN_CHAT_ID, text=text)
 
 
 bot.polling()
