@@ -8,8 +8,6 @@ bot_info = bot.get_me()
 bot_id = bot_info.id
 
 document_types = [
-    'счёт на оплату от продавца',
-    'счёт на оплату покупателю',
     'счет к оплате',
     'акт выполненных работ/ накладная на товар от продавца',
     'акт выполненных работ/ накладная на товар для покупателя',
@@ -24,6 +22,11 @@ users = {}
 @bot.message_handler(commands=['getchatid'])
 def get_chat_id(message):
     bot.reply_to(message, message.chat.id)
+
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.send_message(message.chat.id, 'Отправьте текст, фото или файл')
 
 
 def handle_reply_check(message):
