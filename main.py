@@ -38,7 +38,7 @@ def get_chat_id(message):
 @bot.message_handler(commands=['start'], chat_types=['private'])
 def start(message):
     text = ('Перед тем как начать, отправьте ваше имя и компанию через запятую.\n'
-            'Пример: Ерик, ТОО Fasade kz')
+            'Пример: Иван, ТОО Mega kz')
     bot.send_message(message.chat.id, text=text)
 
 
@@ -67,7 +67,7 @@ def handle_info(message):
         bot.send_message(message.chat.id, text=text)
     else:
         text = ('Пожалуйста, отправьте ваше имя и компанию через запятую.\n'
-                'Пример: Ерик, ТОО Fasade kz')
+                'Пример: Иван, ТОО Mega kz')
         bot.send_message(message.chat.id, text=text)
 
 
