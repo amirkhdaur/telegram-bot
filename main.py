@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 import config
+import sqlite3
+
 
 bot = telebot.TeleBot(config.TELEGRAM_TOKEN, parse_mode='HTML')
 
@@ -8,13 +10,24 @@ bot_info = bot.get_me()
 bot_id = bot_info.id
 
 document_types = [
-    'счет к оплате',
-    'акт выполненных работ/ накладная на товар от продавца',
-    'акт выполненных работ/ накладная на товар для покупателя',
-    'доверенность на получение товара',
-    'акт сверки',
-    'прочее'
+    'Счёт к оплате',
+    'АВР/накладная',
+    'Доверенность',
+    'Акт сверки',
+    'Прочие',
 ]
+
+
+def get_info(user_id):
+    connect = sqlite3.connect('users.db')
+    cursor = connect.cursor()
+    cursor.execute(f'SELECT * FROM users WHERE user_id = ?', [user_id])
+    data = cursor.fetchone()
+    connect.close()
+    if data:
+        return data[0]
+    else:
+        return None
 
 
 @bot.message_handler(commands=['getchatid'])
@@ -22,9 +35,40 @@ def get_chat_id(message):
     bot.reply_to(message, message.chat.id)
 
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=['start'], chat_types=['private'])
 def start(message):
-    bot.send_message(message.chat.id, 'Отправьте текст, фото или файл')
+    text = ('Перед тем как начать, отправьте ваше имя и компанию через запятую.\n'
+            'Пример: Ерик, ТОО Fasade kz')
+    bot.send_message(message.chat.id, text=text)
+
+
+@bot.message_handler(commands=['resetinfo'], chat_types=['private'])
+def reset_info(message):
+    connect = sqlite3.connect('users.db')
+    cursor = connect.cursor()
+    cursor.execute(f'DELETE FROM users WHERE user_id = ?', [message.from_user.id])
+    connect.commit()
+    connect.close()
+    bot.send_message(message.chat.id, text='Сброшено')
+    start(message)
+
+
+@bot.message_handler(chat_types=['private'], content_types=['text', 'document', 'photo'],
+                     func=lambda message: not get_info(message.from_user.id))
+def handle_info(message):
+    if message.text and len(message.text.split(',')) == 2:
+        connect = sqlite3.connect('users.db')
+        cursor = connect.cursor()
+        cursor.execute(f'INSERT INTO users VALUES (?, ?)', [message.text, message.from_user.id])
+        connect.commit()
+        connect.close()
+        text = ('Готово! Теперь вы можете отправлять сообщения.\n'
+                'Если вам потребуется поменять эти данные, используйте команду /resetinfo для сброса.')
+        bot.send_message(message.chat.id, text=text)
+    else:
+        text = ('Пожалуйста, отправьте ваше имя и компанию через запятую.\n'
+                'Пример: Ерик, ТОО Fasade kz')
+        bot.send_message(message.chat.id, text=text)
 
 
 def handle_reply_check(message):
@@ -51,7 +95,7 @@ def handle_reply(message):
         bot.send_message(chat_id, text=message.text, reply_to_message_id=message_id)
 
 
-@bot.message_handler(content_types=['text', 'document', 'photo'],
+@bot.message_handler(content_types=['text', 'document', 'photo'], chat_types=['private'],
                      func=lambda message: str(message.chat.id) != config.TELEGRAM_MAIN_CHAT_ID)
 def handle_document(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -61,21 +105,20 @@ def handle_document(message):
     ]
     markup.add(*buttons)
     bot.send_message(message.chat.id,
-                     text='Выберите тип документа:',
+                     text='Выберите тип заявки:',
                      reply_to_message_id=message.id,
                      reply_markup=markup)
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
-    bot.edit_message_text('Отправлено', call.message.chat.id, call.message.id)
+    bot.edit_message_text('Принято в работу', call.message.chat.id, call.message.id)
     document_type = int(call.data)
 
     message = call.message.reply_to_message
-    user = call.from_user
     text = f'ID: {call.message.chat.id}_{message.id}\n' + \
-           f'Имя: {user.first_name} {user.last_name}\n' + \
-           f'Тип Документа: <b>{document_types[document_type]}</b>'
+           f'Клиент: {get_info(call.from_user.id)}\n' + \
+           f'Тип заявки: <b>{document_types[document_type]}</b>'
 
     message_text = None
     if message.text:
